@@ -1,10 +1,13 @@
 tunnel: 3bc5583e-c22f-43aa-9f3e-56b2e9c59d89
 credentials-file: /etc/cloudflared/3bc5583e-c22f-43aa-9f3e-56b2e9c59d89.json
 
+loglevel: info
+metrics: 127.0.0.1:49383
+
 ingress:
   - hostname: cloud.demonsmp.win
     service: https://192.168.2.10:5001
     originRequest:
-      # set false after you install a Cloudflare Origin Cert in DSM
+      # flip to false after you install a Cloudflare Origin Cert on DSM
       noTLSVerify: true
   - service: http_status:404
