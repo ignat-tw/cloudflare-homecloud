@@ -1,12 +1,16 @@
-version: "3.9"
 services:
   cloudflared:
     image: cloudflare/cloudflared:latest
-    platform: linux/arm64   # M1/M2/M3 Mac
+    platform: linux/arm64
     restart: unless-stopped
     env_file:
       - ../.env
-    command: tunnel --config /etc/cloudflared/config.yml run
+    command: >
+      tunnel --config /etc/cloudflared/config.yml run
+      --loglevel ${CF_LOGLEVEL}
+      --metrics 0.0.0.0:${METRICS_PORT}
     volumes:
       - ../cf/config.yml:/etc/cloudflared/config.yml:ro
       - ../secrets:/etc/cloudflared:ro
+    ports:
+      - "${METRICS_PORT}:${METRICS_PORT}"
