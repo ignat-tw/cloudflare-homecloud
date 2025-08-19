@@ -27,7 +27,7 @@ DEFAULT_METRICS_PORT="49383"
 # Prefer "docker compose", fall back to docker-compose
 dc() {
   if docker compose version >/dev/null 2>&1; then
-    (cd "$COMPOSE_DIR" && docker compose -f "$COMPOSE_FILE" "$@")
+    (cd "$COMPOSE_DIR" && docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@")
   else
     (cd "$COMPOSE_DIR" && docker-compose -f "$COMPOSE_FILE" "$@")
   fi
