@@ -22,7 +22,7 @@ DEFAULT_HOSTNAME="cloud.demonsmp.win"
 DEFAULT_NAS_IP="192.168.2.10"
 DEFAULT_DSM_PORT="5001"
 DEFAULT_CF_LOGLEVEL="info"
-DEFAULT_METRICS_PORT="38383"
+DEFAULT_METRICS_PORT="49383"
 
 # Prefer "docker compose", fall back to docker-compose
 dc() {
@@ -46,7 +46,7 @@ Usage: $(basename "$0") <command>
 Cloudflared (Docker):
   start              🟢 compose up -d (requires cf/config.yml)
   stop               🔴 compose down
-  logs               📜 docker logs -f ${SERVICE_NAME}
+  logs               📜 compose logs -f cloudflared
   status             📊 compose ps
   open               🔗 Open https://\$HOSTNAME
 
@@ -69,7 +69,7 @@ cat > "$COMPOSE_FILE" <<'YML'
 services:
   cloudflared:
     image: cloudflare/cloudflared:latest
-    platform: linux/arm64          # fine on Apple Silicon/Colima
+    platform: linux/arm64
     restart: unless-stopped
     env_file:
       - ../.env
@@ -81,7 +81,7 @@ services:
       - ../cf/config.yml:/etc/cloudflared/config.yml:ro
       - ../secrets:/etc/cloudflared:ro
     ports:
-      - "${METRICS_PORT}:${METRICS_PORT}"   # optional metrics
+      - "127.0.0.1:${METRICS_PORT}:${METRICS_PORT}"   # metrics only on localhost
 YML
     echo "🧩 Wrote ${COMPOSE_FILE}"
   fi
@@ -109,7 +109,6 @@ EOF
 }
 
 get_tunnel_id() {
-  # Prefer list; fallback to first *.json filename in secrets
   local id
   id="$("${CFLARE[@]}" tunnel list 2>/dev/null | awk -v n="$TUNNEL_NAME" '$0 ~ n {print $1; exit}')"
   if [[ -z "${id:-}" ]]; then
@@ -121,6 +120,18 @@ get_tunnel_id() {
 tunnel_creds_path() {
   local tid; tid="$(get_tunnel_id 2>/dev/null || true)"
   [[ -n "${tid:-}" ]] && echo "$CF_SECRETS_DIR/$tid.json" || echo "$CF_SECRETS_DIR/<TUNNEL_UUID>.json"
+}
+
+preflight() {
+  # config present
+  [[ -f "$CF_CONFIG_FILE" ]] || { echo "❌ Missing ${CF_CONFIG_FILE} — create & commit it first."; exit 1; }
+  # config should have literal UUID (not ${...})
+  if grep -qE 'tunnel:\s*\$\{' "$CF_CONFIG_FILE"; then
+    echo "⚠️  ${CF_CONFIG_FILE} uses env placeholders for 'tunnel:'. Use a LITERAL UUID." >&2
+  fi
+  # make files readable by non-root user in container
+  chmod 644 "$CF_CONFIG_FILE" || true
+  find "$CF_SECRETS_DIR" -name '*.json' -exec chmod 644 {} \; || true
 }
 
 bootstrap() {
@@ -164,10 +175,9 @@ cmd="${1:-help}"; shift || true
 
 case "$cmd" in
   start)
-    ensure_layout; ensure_env
-    [[ -f "$CF_CONFIG_FILE" ]] || { echo "❌ Missing ${CF_CONFIG_FILE} — create & commit it first."; exit 1; }
+    ensure_layout; ensure_env; preflight
     echo "🟢 Starting ${SERVICE_NAME}..."
-    dc up -d
+    dc up -d --force-recreate
     ;;
 
   stop)
@@ -176,7 +186,7 @@ case "$cmd" in
     ;;
 
   logs)
-    docker logs -f "${SERVICE_NAME}"
+    dc logs -f cloudflared
     ;;
 
   status)
