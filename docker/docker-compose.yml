@@ -6,11 +6,11 @@ services:
     env_file:
       - ../.env
     command: >
-      tunnel --config /etc/cloudflared/config.yml run
+      tunnel --config /cloudflared/config.yml run
       --loglevel ${CF_LOGLEVEL}
-      --metrics 0.0.0.0:${METRICS_PORT}
+      --metrics 127.0.0.1:${METRICS_PORT}
     volumes:
-      - ../cf/config.yml:/etc/cloudflared/config.yml:ro
+      - ../cf/config.yml:/cloudflared/config.yml:ro
       - ../secrets:/etc/cloudflared:ro
     ports:
-      - "${METRICS_PORT}:${METRICS_PORT}"
+      - "127.0.0.1:${METRICS_PORT}:${METRICS_PORT}"
