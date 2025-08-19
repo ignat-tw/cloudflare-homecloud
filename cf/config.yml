@@ -1,17 +1,10 @@
-version: "3.9"
-services:
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    platform: linux/arm64          # fine on M1/Colima
-    restart: unless-stopped
-    env_file:
-      - ../.env
-    command: >
-      tunnel --config /etc/cloudflared/config.yml run
-      --loglevel ${CF_LOGLEVEL}
-      --metrics 0.0.0.0:${METRICS_PORT}
-    volumes:
-      - ../cf/config.yml:/etc/cloudflared/config.yml:ro
-      - ../secrets:/etc/cloudflared:ro
-    ports:
-      - "${METRICS_PORT}:${METRICS_PORT}"   # optional: Prometheus/local check
+tunnel: 3bc5583e-c22f-43aa-9f3e-56b2e9c59d89
+credentials-file: /etc/cloudflared/3bc5583e-c22f-43aa-9f3e-56b2e9c59d89.json
+
+ingress:
+  - hostname: cloud.demonsmp.win
+    service: https://192.168.2.10:5001
+    originRequest:
+      # set false after you install a Cloudflare Origin Cert in DSM
+      noTLSVerify: true
+  - service: http_status:404
