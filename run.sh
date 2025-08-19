@@ -12,11 +12,11 @@ COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 SERVICE_NAME="cloudflared"
 
 CF_DIR="$PROJECT_ROOT/cf"
-CF_CONFIG_FILE="$CF_DIR/config.yml"          # <-- versioned; you maintain this
+CF_CONFIG_FILE="$CF_DIR/config.yml"          # versioned by you
 CF_SECRETS_DIR="$PROJECT_ROOT/secrets"       # holds <TUNNEL_ID>.json (keep out of git)
 ENV_FILE="$PROJECT_ROOT/.env"
 
-# Defaults written once to .env (edit later)
+# Defaults written once to .env
 DEFAULT_TUNNEL_NAME="homecloud"
 DEFAULT_HOSTNAME="cloud.demonsmp.win"
 DEFAULT_NAS_IP="192.168.2.10"
@@ -24,10 +24,19 @@ DEFAULT_DSM_PORT="5001"
 DEFAULT_CF_LOGLEVEL="info"
 DEFAULT_METRICS_PORT="38383"
 
+# Prefer "docker compose", fall back to docker-compose
+dc() {
+  if docker compose version >/dev/null 2>&1; then
+    (cd "$COMPOSE_DIR" && docker compose -f "$COMPOSE_FILE" "$@")
+  else
+    (cd "$COMPOSE_DIR" && docker-compose -f "$COMPOSE_FILE" "$@")
+  fi
+}
+
 # dockerized cloudflared CLI (persists creds in ./secrets)
-CFLARE=(docker run --rm -it \
-  -v "$CF_SECRETS_DIR":/home/nonroot/.cloudflared \
-  -v "$CF_SECRETS_DIR":/etc/cloudflared \
+CFLARE=(docker run --rm -it
+  -v "$CF_SECRETS_DIR":/home/nonroot/.cloudflared
+  -v "$CF_SECRETS_DIR":/etc/cloudflared
   cloudflare/cloudflared:latest)
 
 show_help() {
@@ -35,10 +44,10 @@ show_help() {
 Usage: $(basename "$0") <command>
 
 Cloudflared (Docker):
-  start              🟢 docker-compose up -d (requires cf/config.yml)
-  stop               🔴 docker-compose down
-  logs               📜 docker logs -f $SERVICE_NAME
-  status             📊 docker-compose ps
+  start              🟢 compose up -d (requires cf/config.yml)
+  stop               🔴 compose down
+  logs               📜 docker logs -f ${SERVICE_NAME}
+  status             📊 compose ps
   open               🔗 Open https://\$HOSTNAME
 
 Tunnel (Cloudflare CLI via docker run):
@@ -50,33 +59,15 @@ Tunnel (Cloudflare CLI via docker run):
   tunnel-delete      🗑  Delete tunnel "\$TUNNEL_NAME"
   tunnel-id          🆔 Print detected tunnel ID (from list or secrets)
   tunnel-creds-path  📂 Show expected creds JSON path
-
-Files:
-  - $ENV_FILE                  (.env loaded by compose)
-  - $COMPOSE_FILE              (written once; uses env_file + mounted cf/config.yml)
-  - $CF_CONFIG_FILE            (versioned by you; must include tunnel + credentials-file)
-  - $CF_SECRETS_DIR/<id>.json  (created by login/create; mount into container)
-
-Tip:
-  In $CF_CONFIG_FILE set, for example:
-    tunnel: <TUNNEL_UUID>
-    credentials-file: /etc/cloudflared/<TUNNEL_UUID>.json
-    ingress:
-      - hostname: \${HOSTNAME}
-        service: https://\${NAS_IP}:\${DSM_PORT}
-        originRequest:
-          noTLSVerify: true  # set false after installing Cloudflare Origin Cert on DSM
-      - service: http_status:404
 EOF
 }
 
 ensure_layout() {
   mkdir -p "$COMPOSE_DIR" "$CF_DIR" "$CF_SECRETS_DIR"
   if [[ ! -f "$COMPOSE_FILE" ]]; then
-cat > "$COMPOSE_FILE" <<YML
-version: "3.9"
+cat > "$COMPOSE_FILE" <<'YML'
 services:
-  $SERVICE_NAME:
+  cloudflared:
     image: cloudflare/cloudflared:latest
     platform: linux/arm64          # fine on Apple Silicon/Colima
     restart: unless-stopped
@@ -84,15 +75,15 @@ services:
       - ../.env
     command: >
       tunnel --config /etc/cloudflared/config.yml run
-      --loglevel \${CF_LOGLEVEL}
-      --metrics 0.0.0.0:\${METRICS_PORT}
+      --loglevel ${CF_LOGLEVEL}
+      --metrics 0.0.0.0:${METRICS_PORT}
     volumes:
       - ../cf/config.yml:/etc/cloudflared/config.yml:ro
       - ../secrets:/etc/cloudflared:ro
     ports:
-      - "\${METRICS_PORT}:\${METRICS_PORT}"   # optional metrics
+      - "${METRICS_PORT}:${METRICS_PORT}"   # optional metrics
 YML
-    echo "🧩 Wrote $COMPOSE_FILE"
+    echo "🧩 Wrote ${COMPOSE_FILE}"
   fi
 }
 
@@ -100,21 +91,20 @@ ensure_env() {
   if [[ ! -f "$ENV_FILE" ]]; then
 cat > "$ENV_FILE" <<EOF
 # ---- Cloudflare Tunnel basics ----
-TUNNEL_NAME=$DEFAULT_TUNNEL_NAME
-HOSTNAME=$DEFAULT_HOSTNAME
+TUNNEL_NAME=${DEFAULT_TUNNEL_NAME}
+HOSTNAME=${DEFAULT_HOSTNAME}
 # TUNNEL_ID is not required here; reference it directly in cf/config.yml
 
 # ---- NAS origin ----
-NAS_IP=$DEFAULT_NAS_IP
-DSM_PORT=$DEFAULT_DSM_PORT
+NAS_IP=${DEFAULT_NAS_IP}
+DSM_PORT=${DEFAULT_DSM_PORT}
 
 # ---- Cloudflared runtime ----
-CF_LOGLEVEL=$DEFAULT_CF_LOGLEVEL
-METRICS_PORT=$DEFAULT_METRICS_PORT
+CF_LOGLEVEL=${DEFAULT_CF_LOGLEVEL}
+METRICS_PORT=${DEFAULT_METRICS_PORT}
 EOF
-    echo "🧩 Wrote $ENV_FILE"
+    echo "🧩 Wrote ${ENV_FILE}"
   fi
-  # shellcheck disable=SC2046
   set -a; source "$ENV_FILE"; set +a
 }
 
@@ -130,48 +120,43 @@ get_tunnel_id() {
 
 tunnel_creds_path() {
   local tid; tid="$(get_tunnel_id 2>/dev/null || true)"
-  if [[ -n "${tid:-}" ]]; then
-    echo "$CF_SECRETS_DIR/$tid.json"
-  else
-    echo "$CF_SECRETS_DIR/<TUNNEL_UUID>.json"
-  fi
+  [[ -n "${tid:-}" ]] && echo "$CF_SECRETS_DIR/$tid.json" || echo "$CF_SECRETS_DIR/<TUNNEL_UUID>.json"
 }
 
 bootstrap() {
   ensure_layout
   ensure_env
 
-  echo "🔐 Login to Cloudflare (accept in browser)…"
+  echo "🔐 Login to Cloudflare (accept in browser)..."
   "${CFLARE[@]}" tunnel login
 
-  echo "🏗  Create (or reuse) tunnel: $TUNNEL_NAME"
-  "${CFLARE[@]}" tunnel create "$TUNNEL_NAME" || true
+  echo "🏗  Create (or reuse) tunnel: ${TUNNEL_NAME}"
+  "${CFLARE[@]}" tunnel create "${TUNNEL_NAME}" || true
 
   local tid
   tid="$(get_tunnel_id)" || { echo "❌ Could not determine tunnel ID"; exit 1; }
 
-  echo "🆔 Tunnel ID: $tid"
-  echo "📂 Credentials JSON: $CF_SECRETS_DIR/$tid.json"
-  [[ -f "$CF_SECRETS_DIR/$tid.json" ]] || echo "⚠️  Creds file not found yet. If you ran host cloudflared elsewhere, copy it here."
+  echo "🆔 Tunnel ID: ${tid}"
+  echo "📂 Credentials JSON: ${CF_SECRETS_DIR}/${tid}.json"
+  [[ -f "${CF_SECRETS_DIR}/${tid}.json" ]] || echo "⚠️  Creds file not found yet. If you ran host cloudflared elsewhere, copy it here."
 
-  echo "🌐 Route DNS: $HOSTNAME → $TUNNEL_NAME"
-  "${CFLARE[@]}" tunnel route dns "$TUNNEL_NAME" "$HOSTNAME" || true
+  echo "🌐 Route DNS: ${HOSTNAME} → ${TUNNEL_NAME}"
+  "${CFLARE[@]}" tunnel route dns "${TUNNEL_NAME}" "${HOSTNAME}" || true
 
-  echo "📄 Config is NOT written by this script."
-  echo "   Ensure $CF_CONFIG_FILE contains:"
   cat <<SNIP
 ------------------------------------------------------------
-tunnel: $tid
-credentials-file: /etc/cloudflared/$tid.json
+Ensure ${CF_CONFIG_FILE} contains:
+tunnel: ${tid}
+credentials-file: /etc/cloudflared/${tid}.json
 ingress:
-  - hostname: $HOSTNAME
-    service: https://$NAS_IP:$DSM_PORT
+  - hostname: ${HOSTNAME}
+    service: https://${NAS_IP}:${DSM_PORT}
     originRequest:
       noTLSVerify: true
   - service: http_status:404
 ------------------------------------------------------------
+✅ Bootstrap complete. Now run: $0 start
 SNIP
-  echo "✅ Bootstrap complete. Now run: $0 start"
 }
 
 # ---- main ---------------------------------------------------------------
@@ -180,27 +165,27 @@ cmd="${1:-help}"; shift || true
 case "$cmd" in
   start)
     ensure_layout; ensure_env
-    [[ -f "$CF_CONFIG_FILE" ]] || { echo "❌ Missing $CF_CONFIG_FILE — create & commit it first."; exit 1; }
-    echo "🟢 Starting $SERVICE_NAME…"
-    (cd "$COMPOSE_DIR" && docker-compose up -d)
+    [[ -f "$CF_CONFIG_FILE" ]] || { echo "❌ Missing ${CF_CONFIG_FILE} — create & commit it first."; exit 1; }
+    echo "🟢 Starting ${SERVICE_NAME}..."
+    dc up -d
     ;;
 
   stop)
-    echo "🔴 Stopping $SERVICE_NAME…"
-    (cd "$COMPOSE_DIR" && docker-compose down)
+    echo "🔴 Stopping ${SERVICE_NAME}..."
+    dc down
     ;;
 
   logs)
-    docker logs -f "$SERVICE_NAME"
+    docker logs -f "${SERVICE_NAME}"
     ;;
 
   status)
-    (cd "$COMPOSE_DIR" && docker-compose ps)
+    dc ps
     ;;
 
   open)
     ensure_env
-    if command -v open >/dev/null 2>&1; then open "https://$HOSTNAME"; else echo "🔗 https://$HOSTNAME"; fi
+    if command -v open >/dev/null 2>&1; then open "https://${HOSTNAME}"; else echo "🔗 https://${HOSTNAME}"; fi
     ;;
 
   bootstrap)
@@ -213,7 +198,7 @@ case "$cmd" in
 
   tunnel-create)
     ensure_env
-    "${CFLARE[@]}" tunnel create "$TUNNEL_NAME" || true
+    "${CFLARE[@]}" tunnel create "${TUNNEL_NAME}" || true
     ;;
 
   tunnel-list)
@@ -224,12 +209,12 @@ case "$cmd" in
     ensure_env
     host="${1:-$HOSTNAME}"
     [[ -n "$host" ]] || { echo "Usage: $0 tunnel-dns <hostname>"; exit 1; }
-    "${CFLARE[@]}" tunnel route dns "$TUNNEL_NAME" "$host"
+    "${CFLARE[@]}" tunnel route dns "${TUNNEL_NAME}" "${host}"
     ;;
 
   tunnel-delete)
     ensure_env
-    "${CFLARE[@]}" tunnel delete "$TUNNEL_NAME"
+    "${CFLARE[@]}" tunnel delete "${TUNNEL_NAME}"
     ;;
 
   tunnel-id)
