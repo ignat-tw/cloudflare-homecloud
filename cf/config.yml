@@ -12,7 +12,7 @@ ingress:
       noTLSVerify: true
 
   - hostname: manictime.demonsmp.win
-    service: http://192.168.2.5:38383
+    service: http://192.168.2.88:38383
     originRequest:
       httpHostHeader: manictime.demonsmp.win
 
