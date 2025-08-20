@@ -11,16 +11,9 @@ ingress:
       originServerName: cloud.demonsmp.win
       noTLSVerify: true
 
-  - hostname: drive.demonsmp.win
-    service: https://192.168.2.10:5001
+  - hostname: manictime.demonsmp.win
+    service: http://192.168.2.5:38383
     originRequest:
-      originServerName: drive.demonsmp.win
-      noTLSVerify: true
-
-  - hostname: photos.demonsmp.win
-    service: https://192.168.2.10:5001
-    originRequest:
-      originServerName: photos.demonsmp.win
-      noTLSVerify: true
+      httpHostHeader: manictime.demonsmp.win
 
   - service: http_status:404
