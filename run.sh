@@ -178,11 +178,10 @@ need_autossh() {
 }
 
 drive_bind_host() {
-  if [[ "${DRIVE_REMOTE_BIND_ALL,,}" == "true" ]]; then
-    echo "0.0.0.0"
-  else
-    echo "127.0.0.1"
-  fi
+  case "$DRIVE_REMOTE_BIND_ALL" in
+    true|TRUE|True|1|yes|YES|on|ON) echo "0.0.0.0" ;;
+    *)                              echo "127.0.0.1" ;;
+  esac
 }
 
 drive_tunnel_start() {
