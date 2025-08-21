@@ -47,6 +47,13 @@ DEFAULT_DRIVE_REMOTE_PORT="16690"   # port on Oracle reached via SSH -R
 DEFAULT_DRIVE_PUBLIC_PORT="6690"    # public port on Oracle exposed by nginx stream
 DEFAULT_DRIVE_REMOTE_BIND_ALL="false"  # set true to skip nginx & bind 0.0.0.0 (requires GatewayPorts)
 
+# Defaults for DSM HTTPS raw TCP ("cloud")
+DEFAULT_CLOUD_LOCAL_IP="$DEFAULT_NAS_IP"
+DEFAULT_CLOUD_LOCAL_PORT="5001"
+DEFAULT_CLOUD_REMOTE_PORT="15001"
+DEFAULT_CLOUD_PUBLIC_PORT="5001"
+DEFAULT_CLOUD_REMOTE_BIND_ALL="false"
+
 # Prefer "docker compose", fall back to docker-compose
 dc() {
   if docker compose version >/dev/null 2>&1; then
@@ -155,6 +162,14 @@ DRIVE_PUBLIC_PORT=${DEFAULT_DRIVE_PUBLIC_PORT}
 # If set to "true", bind 0.0.0.0:\$DRIVE_PUBLIC_PORT directly from SSH and SKIP nginx.
 # Requires sshd_config: GatewayPorts clientspecified
 DRIVE_REMOTE_BIND_ALL=${DEFAULT_DRIVE_REMOTE_BIND_ALL}
+
+# ---- DSM HTTPS raw TCP (via Oracle) ----
+CLOUD_LOCAL_IP=${DEFAULT_CLOUD_LOCAL_IP}
+CLOUD_LOCAL_PORT=${DEFAULT_CLOUD_LOCAL_PORT}
+CLOUD_REMOTE_PORT=${DEFAULT_CLOUD_REMOTE_PORT}
+CLOUD_PUBLIC_PORT=${DEFAULT_CLOUD_PUBLIC_PORT}
+CLOUD_REMOTE_BIND_ALL=${DEFAULT_CLOUD_REMOTE_BIND_ALL}
+
 EOF
     echo "🧩 Wrote ${ENV_FILE}"
   fi
@@ -194,9 +209,10 @@ need_autossh() {
 }
 
 drive_bind_host() {
-  case "$DRIVE_REMOTE_BIND_ALL" in
-    true|TRUE|True|1|yes|YES|on|ON) echo "0.0.0.0" ;;
-    *)                              echo "127.0.0.1" ;;
+  local all="${DRIVE_REMOTE_BIND_ALL:-false}"
+  case "$all" in
+    true|TRUE|1|yes|on) echo "0.0.0.0" ;;
+    *)                   echo "127.0.0.1" ;;
   esac
 }
 
@@ -260,65 +276,37 @@ drive_tunnel_status() {
 cloud_tunnel_start() {
   need_autossh
   local bind_host; bind_host="$(cloud_bind_host)"
-  local R_ARG="${bind_host}:${CLOUD_REMOTE_PORT}:${CLOUD_LOCAL_IP}:${CLOUD_LOCAL_PORT}"
+  local R_ARG="${bind_host}:${CLOUD_REMOTE_PORT:-15001}:${CLOUD_LOCAL_IP:-$NAS_IP}:${CLOUD_LOCAL_PORT:-5001}"
 
-  if [[ -f "$CLOUD_PID_FILE" ]] && ps -p "$(cat "$CLOUD_PID_FILE")" >/dev/null 2>&1; then
-    echo "⚠️  Cloud (DSM) tunnel already running (PID: $(cat "$CLOUD_PID_FILE"))."
-    return
+  if [[ -f "$TUN_DIR/cloud.pid" ]] && ps -p "$(cat "$TUN_DIR/cloud.pid")" >/dev/null 2>&1; then
+    echo "⚠️  Cloud tunnel already running (PID: $(cat "$TUN_DIR/cloud.pid"))."; return
   fi
 
-  echo "🔌 Starting DSM reverse SSH to ${JUMP_HOST} (R ${R_ARG}) ..."
+  echo "🔌 Starting reverse SSH (cloud HTTPS) to ${JUMP_HOST} (R ${R_ARG}) ..."
   nohup autossh -f -M 0 -N \
-    -i "$SSH_KEY_PATH" \
+    -i "${SSH_KEY_PATH}" \
     -o StrictHostKeyChecking=no \
     -o ExitOnForwardFailure=yes \
     -o IdentitiesOnly=yes \
     -o ServerAliveInterval=30 \
     -o ServerAliveCountMax=3 \
-    -R "$R_ARG" "$JUMP_HOST" > "$CLOUD_LOG_FILE" 2>&1 &
+    -R "$R_ARG" "$JUMP_HOST" > "$TUN_DIR/cloud.log" 2>&1 &
 
   sleep 1
-  local REAL_PID
-  REAL_PID="$(pgrep -f "autossh.*${R_ARG//./\\.}.*$JUMP_HOST" | head -n1 || true)"
-  if [[ -n "${REAL_PID:-}" ]]; then
-    echo "$REAL_PID" > "$CLOUD_PID_FILE"
-    echo "🚀 DSM tunnel started (PID: $REAL_PID). Log: $CLOUD_LOG_FILE"
-  else
-    echo "❌ Could not find DSM tunnel PID. Check $CLOUD_LOG_FILE"
-    exit 1
-  fi
+  local REAL_PID; REAL_PID="$(pgrep -f "autossh.*${R_ARG//./\\.}.*$JUMP_HOST" | head -n1 || true)"
+  [[ -n "$REAL_PID" ]] && echo "$REAL_PID" > "$TUN_DIR/cloud.pid" && echo "🚀 Cloud tunnel started (PID: $REAL_PID)" || { echo "❌ Could not find cloud tunnel PID. See $TUN_DIR/cloud.log"; exit 1; }
 }
 
 cloud_bind_host() {
-  case "$CLOUD_REMOTE_BIND_ALL" in
-    true|TRUE|True|1|yes|YES|on|ON) echo "0.0.0.0" ;;
-    *)                              echo "127.0.0.1" ;;
+  local all="${CLOUD_REMOTE_BIND_ALL:-false}"
+  case "$all" in
+    true|TRUE|1|yes|on) echo "0.0.0.0" ;;
+    *)                   echo "127.0.0.1" ;;
   esac
 }
 
-cloud_tunnel_stop() {
-  if [[ -f "$CLOUD_PID_FILE" ]]; then
-    local PID; PID="$(cat "$CLOUD_PID_FILE")"
-    echo "🧹 Stopping DSM tunnel (PID: $PID) ..."
-    if kill "$PID" >/dev/null 2>&1; then
-      rm -f "$CLOUD_PID_FILE"
-      echo "✅ Stopped."
-    else
-      echo "⚠️ Not running. Cleaning up PID file."
-      rm -f "$CLOUD_PID_FILE"
-    fi
-  else
-    echo "⚠️ No DSM tunnel PID recorded."
-  fi
-}
-
-cloud_tunnel_status() {
-  if [[ -f "$CLOUD_PID_FILE" ]] && ps -p "$(cat "$CLOUD_PID_FILE")" >/dev/null 2>&1; then
-    echo "📈 DSM tunnel is running (PID: $(cat "$CLOUD_PID_FILE"))."
-  else
-    echo "❌ DSM tunnel is not running."
-  fi
-}
+cloud_tunnel_stop()   { [[ -f "$TUN_DIR/cloud.pid" ]] && kill "$(cat "$TUN_DIR/cloud.pid")" 2>/dev/null && rm -f "$TUN_DIR/cloud.pid" && echo "✅ Cloud tunnel stopped." || echo "⚠️ No cloud PID."; }
+cloud_tunnel_status() { [[ -f "$TUN_DIR/cloud.pid" ]] && ps -p "$(cat "$TUN_DIR/cloud.pid")" >/dev/null && echo "📈 Cloud tunnel running (PID: $(cat "$TUN_DIR/cloud.pid"))." || echo "❌ Cloud tunnel not running."; }
 
 # ---- main ---------------------------------------------------------------
 cmd="${1:-help}"; shift || true
