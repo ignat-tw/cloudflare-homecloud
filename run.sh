@@ -214,15 +214,16 @@ drive_bind_host() {
 drive_tunnel_start() {
   need_autossh
   local bind_host; bind_host="$(drive_bind_host)"
-  local R_ARG="${bind_host}:${DRIVE_REMOTE_PORT}:${DRIVE_LOCAL_IP}:${DRIVE_LOCAL_PORT}"
 
-  # If already running, exit quietly
+  local R_SYNC="${bind_host}:${DRIVE_REMOTE_PORT}:${DRIVE_LOCAL_IP}:${DRIVE_LOCAL_PORT}"
+  local R_WEB="${bind_host}:${DRIVE_WEB_REMOTE_PORT}:${DRIVE_LOCAL_IP}:${DRIVE_WEB_LOCAL_PORT}"
+
   if [[ -f "$DRIVE_PID_FILE" ]] && ps -p "$(cat "$DRIVE_PID_FILE")" >/dev/null 2>&1; then
     echo "⚠️  Drive tunnel already running (PID: $(cat "$DRIVE_PID_FILE"))."
     return
   fi
 
-  echo "🔌 Starting reverse SSH tunnel to ${JUMP_HOST} (R ${R_ARG}) ..."
+  echo "🔌 Starting reverse SSH (Drive 6690 + 6691) to ${JUMP_HOST} ..."
   nohup autossh -f -M 0 -N \
     -i "$SSH_KEY_PATH" \
     -o StrictHostKeyChecking=no \
@@ -230,18 +231,14 @@ drive_tunnel_start() {
     -o IdentitiesOnly=yes \
     -o ServerAliveInterval=30 \
     -o ServerAliveCountMax=3 \
-    -R "$R_ARG" "$JUMP_HOST" > "$DRIVE_LOG_FILE" 2>&1 &
+    -R "$R_SYNC" \
+    -R "$R_WEB" \
+    "$JUMP_HOST" > "$DRIVE_LOG_FILE" 2>&1 &
 
   sleep 1
   local REAL_PID
-  REAL_PID="$(pgrep -f "autossh.*${R_ARG//./\\.}.*$JUMP_HOST" | head -n1 || true)"
-  if [[ -n "${REAL_PID:-}" ]]; then
-    echo "$REAL_PID" > "$DRIVE_PID_FILE"
-    echo "🚀 Drive tunnel started (PID: $REAL_PID). Log: $DRIVE_LOG_FILE"
-  else
-    echo "❌ Could not find tunnel PID. Check $DRIVE_LOG_FILE"
-    exit 1
-  fi
+  REAL_PID="$(pgrep -f "autossh.*${R_SYNC//./\\.}.*$JUMP_HOST" | head -n1 || true)"
+  [[ -n "${REAL_PID:-}" ]] && echo "$REAL_PID" > "$DRIVE_PID_FILE" && echo "🚀 Drive tunnel started (PID: $REAL_PID)" || { echo "❌ Could not find tunnel PID. See $DRIVE_LOG_FILE"; exit 1; }
 }
 
 drive_tunnel_stop() {
@@ -271,13 +268,14 @@ drive_tunnel_status() {
 cloud_tunnel_start() {
   need_autossh
   local bind_host; bind_host="$(cloud_bind_host)"
-  local R_ARG="${bind_host}:${CLOUD_REMOTE_PORT:-15001}:${CLOUD_LOCAL_IP:-$NAS_IP}:${CLOUD_LOCAL_PORT:-5001}"
+  local R_HTTPS="${bind_host}:${CLOUD_REMOTE_PORT:-15001}:${CLOUD_LOCAL_IP:-$NAS_IP}:${CLOUD_LOCAL_PORT:-5001}"
+  local R_HTTP="${bind_host}:${CLOUD_REMOTE_HTTP_PORT:-15080}:${CLOUD_LOCAL_IP:-$NAS_IP}:80"
 
   if [[ -f "$TUN_DIR/cloud.pid" ]] && ps -p "$(cat "$TUN_DIR/cloud.pid")" >/dev/null 2>&1; then
     echo "⚠️  Cloud tunnel already running (PID: $(cat "$TUN_DIR/cloud.pid"))."; return
   fi
 
-  echo "🔌 Starting reverse SSH (cloud HTTPS) to ${JUMP_HOST} (R ${R_ARG}) ..."
+  echo "🔌 Starting reverse SSH (cloud HTTPS/HTTP) to ${JUMP_HOST} ..."
   nohup autossh -f -M 0 -N \
     -i "${SSH_KEY_PATH}" \
     -o StrictHostKeyChecking=no \
@@ -285,10 +283,12 @@ cloud_tunnel_start() {
     -o IdentitiesOnly=yes \
     -o ServerAliveInterval=30 \
     -o ServerAliveCountMax=3 \
-    -R "$R_ARG" "$JUMP_HOST" > "$TUN_DIR/cloud.log" 2>&1 &
+    -R "$R_HTTPS" \
+    -R "$R_HTTP" \
+    "$JUMP_HOST" > "$TUN_DIR/cloud.log" 2>&1 &
 
   sleep 1
-  local REAL_PID; REAL_PID="$(pgrep -f "autossh.*${R_ARG//./\\.}.*$JUMP_HOST" | head -n1 || true)"
+  local REAL_PID; REAL_PID="$(pgrep -f "autossh.*${R_HTTPS//./\\.}.*$JUMP_HOST" | head -n1 || true)"
   [[ -n "$REAL_PID" ]] && echo "$REAL_PID" > "$TUN_DIR/cloud.pid" && echo "🚀 Cloud tunnel started (PID: $REAL_PID)" || { echo "❌ Could not find cloud tunnel PID. See $TUN_DIR/cloud.log"; exit 1; }
 }
 
