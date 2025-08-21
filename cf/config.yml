@@ -5,11 +5,6 @@ loglevel: info
 metrics: 127.0.0.1:49383
 
 ingress:
-  - hostname: cloud.demonsmp.win
-    service: https://192.168.2.10:5001
-    originRequest:
-      originServerName: cloud.demonsmp.win
-      noTLSVerify: true
 
   - hostname: manictime.demonsmp.win
     service: http://192.168.2.88:38383

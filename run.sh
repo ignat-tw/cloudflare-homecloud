@@ -21,6 +21,15 @@ mkdir -p "$TUN_DIR"
 DRIVE_PID_FILE="$TUN_DIR/drive.pid"
 DRIVE_LOG_FILE="$TUN_DIR/drive.log"
 
+# ---- DSM (cloud) over Oracle ----
+CLOUD_LOCAL_IP=${DEFAULT_CLOUD_LOCAL_IP}
+CLOUD_LOCAL_PORT=${DEFAULT_CLOUD_LOCAL_PORT}
+CLOUD_REMOTE_PORT=${DEFAULT_CLOUD_REMOTE_PORT}
+CLOUD_REMOTE_BIND_ALL=${DEFAULT_CLOUD_REMOTE_BIND_ALL}
+
+CLOUD_PID_FILE="$TUN_DIR/cloud.pid"
+CLOUD_LOG_FILE="$TUN_DIR/cloud.log"
+
 # Defaults for first .env creation
 DEFAULT_TUNNEL_NAME="homecloud"
 DEFAULT_HOSTNAME="cloud.demonsmp.win"
@@ -79,6 +88,13 @@ Synology Drive TCP tunnel (autossh → Oracle):
   drive-tunnel-stop      ❌ Stop it via PID
   drive-tunnel-status    📈 Check status
   drive-tunnel-recreate  🔁 Restart cleanly
+
+Synology Cloud Drive TCP tunnel (autossh → Oracle):
+  cloud-tunnel-start     🔌 Start reverse SSH tunnel & record PID
+  cloud-tunnel-stop      ❌ Stop it via PID
+  cloud-tunnel-status    📈 Check status
+  cloud-tunnel-recreate  🔁 Restart cleanly
+
 EOF
 }
 
@@ -241,6 +257,69 @@ drive_tunnel_status() {
   fi
 }
 
+cloud_tunnel_start() {
+  need_autossh
+  local bind_host; bind_host="$(cloud_bind_host)"
+  local R_ARG="${bind_host}:${CLOUD_REMOTE_PORT}:${CLOUD_LOCAL_IP}:${CLOUD_LOCAL_PORT}"
+
+  if [[ -f "$CLOUD_PID_FILE" ]] && ps -p "$(cat "$CLOUD_PID_FILE")" >/dev/null 2>&1; then
+    echo "⚠️  Cloud (DSM) tunnel already running (PID: $(cat "$CLOUD_PID_FILE"))."
+    return
+  fi
+
+  echo "🔌 Starting DSM reverse SSH to ${JUMP_HOST} (R ${R_ARG}) ..."
+  nohup autossh -f -M 0 -N \
+    -i "$SSH_KEY_PATH" \
+    -o StrictHostKeyChecking=no \
+    -o ExitOnForwardFailure=yes \
+    -o IdentitiesOnly=yes \
+    -o ServerAliveInterval=30 \
+    -o ServerAliveCountMax=3 \
+    -R "$R_ARG" "$JUMP_HOST" > "$CLOUD_LOG_FILE" 2>&1 &
+
+  sleep 1
+  local REAL_PID
+  REAL_PID="$(pgrep -f "autossh.*${R_ARG//./\\.}.*$JUMP_HOST" | head -n1 || true)"
+  if [[ -n "${REAL_PID:-}" ]]; then
+    echo "$REAL_PID" > "$CLOUD_PID_FILE"
+    echo "🚀 DSM tunnel started (PID: $REAL_PID). Log: $CLOUD_LOG_FILE"
+  else
+    echo "❌ Could not find DSM tunnel PID. Check $CLOUD_LOG_FILE"
+    exit 1
+  fi
+}
+
+cloud_bind_host() {
+  case "$CLOUD_REMOTE_BIND_ALL" in
+    true|TRUE|True|1|yes|YES|on|ON) echo "0.0.0.0" ;;
+    *)                              echo "127.0.0.1" ;;
+  esac
+}
+
+cloud_tunnel_stop() {
+  if [[ -f "$CLOUD_PID_FILE" ]]; then
+    local PID; PID="$(cat "$CLOUD_PID_FILE")"
+    echo "🧹 Stopping DSM tunnel (PID: $PID) ..."
+    if kill "$PID" >/dev/null 2>&1; then
+      rm -f "$CLOUD_PID_FILE"
+      echo "✅ Stopped."
+    else
+      echo "⚠️ Not running. Cleaning up PID file."
+      rm -f "$CLOUD_PID_FILE"
+    fi
+  else
+    echo "⚠️ No DSM tunnel PID recorded."
+  fi
+}
+
+cloud_tunnel_status() {
+  if [[ -f "$CLOUD_PID_FILE" ]] && ps -p "$(cat "$CLOUD_PID_FILE")" >/dev/null 2>&1; then
+    echo "📈 DSM tunnel is running (PID: $(cat "$CLOUD_PID_FILE"))."
+  else
+    echo "❌ DSM tunnel is not running."
+  fi
+}
+
 # ---- main ---------------------------------------------------------------
 cmd="${1:-help}"; shift || true
 
@@ -264,6 +343,12 @@ case "$cmd" in
   drive-tunnel-stop)  ensure_env; drive_tunnel_stop ;;
   drive-tunnel-status) ensure_env; drive_tunnel_status ;;
   drive-tunnel-recreate) ensure_env; drive_tunnel_stop || true; sleep 1; drive_tunnel_start ;;
+
+  # DSM (cloud) TCP tunnel
+  cloud-tunnel-start)   ensure_env; cloud_tunnel_start ;;
+  cloud-tunnel-stop)    ensure_env; cloud_tunnel_stop ;;
+  cloud-tunnel-status)  ensure_env; cloud_tunnel_status ;;
+  cloud-tunnel-recreate) ensure_env; cloud_tunnel_stop || true; sleep 1; cloud_tunnel_start ;;
 
   help|*) show_help ;;
 esac
