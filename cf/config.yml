@@ -5,10 +5,17 @@ loglevel: info
 metrics: 127.0.0.1:49383
 
 ingress:
-
+  # ManicTime (existing)
   - hostname: manictime.demonsmp.win
     service: http://192.168.2.88:38383
     originRequest:
       httpHostHeader: manictime.demonsmp.win
 
+  # Jira on the M1 mini (Docker maps 18081->8080)
+  - hostname: exception-management-m1.demonsmp.win
+    service: http://localhost:18081
+    originRequest:
+      httpHostHeader: exception-management-m1.demonsmp.win
+
+  # catch-all must remain LAST
   - service: http_status:404
