@@ -17,5 +17,8 @@ ingress:
     originRequest:
       httpHostHeader: exception-management-m1.demonsmp.win
 
+  - hostname: ssh.demonsmp.win
+    service: ssh://localhost:22
+
   # catch-all must remain LAST
   - service: http_status:404
