@@ -17,6 +17,12 @@ ingress:
     originRequest:
       httpHostHeader: exception-management-m1.demonsmp.win
 
+  # Maven on Synology DS720 host (Docker maps 18081->8080)
+  - hostname: maven.demonsmp.win
+    service: http://192.168.2.10:8081
+    originRequest:
+      httpHostHeader: maven.demonsmp.win
+
   - hostname: ssh.demonsmp.win
     service: ssh://192.168.2.88:22
 
