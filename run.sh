@@ -333,9 +333,5 @@ case "$cmd" in
   cloud-tunnel-status)  ensure_env; cloud_tunnel_status ;;
   cloud-tunnel-recreate) ensure_env; cloud_tunnel_stop || true; sleep 1; cloud_tunnel_start ;;
 
-  # Handover tunnel to restart ssh.
-  handover-start)  ensure_layout; ensure_env; preflight; handover-start ;;
-  handover-finish) handover-finish ;;
-
   help|*) show_help ;;
 esac
