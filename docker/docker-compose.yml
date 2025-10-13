@@ -12,6 +12,5 @@ services:
       - ../secrets:/etc/cloudflared:ro
     ports:
       - "127.0.0.1:${METRICS_PORT}:${METRICS_PORT}"
-    cpus: "1.0"                 # hard CPU cap = 1 core
-    mem_limit: "1g"             # hard memory limit
-    mem_reservation: "512m"     # soft reservation (scheduler hint)
+    cpus: "0.5"                 # hard CPU cap = 1 core
+    mem_limit: "200m"             # hard memory limit
