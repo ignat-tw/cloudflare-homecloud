@@ -303,6 +303,62 @@ cloud_bind_host() {
 cloud_tunnel_stop()   { [[ -f "$TUN_DIR/cloud.pid" ]] && kill "$(cat "$TUN_DIR/cloud.pid")" 2>/dev/null && rm -f "$TUN_DIR/cloud.pid" && echo "✅ Cloud tunnel stopped." || echo "⚠️ No cloud PID."; }
 cloud_tunnel_status() { [[ -f "$TUN_DIR/cloud.pid" ]] && ps -p "$(cat "$TUN_DIR/cloud.pid")" >/dev/null && echo "📈 Cloud tunnel running (PID: $(cat "$TUN_DIR/cloud.pid"))." || echo "❌ Cloud tunnel not running."; }
 
+delayed-restart() {
+  local delay="${1:-5}"
+  # run detached, capture logs for post-check
+  nohup bash -c '
+    set -euo pipefail
+    PROJECT_ROOT="'"$PROJECT_ROOT"'"
+    COMPOSE_DIR="'"$COMPOSE_DIR"'"
+    ENV_FILE="'"$ENV_FILE"'"
+    LOG="/tmp/cf-restart.log"
+
+    {
+      echo "[detached] will restart in '"$delay"'s..."
+      sleep '"$delay"'
+      cd "$PROJECT_ROOT"
+
+      # Stop/start via your own script to keep behavior consistent
+      ./run.sh stop
+      sleep 2
+      ./run.sh start
+
+      # Load env to get METRICS_PORT etc.
+      set -a; [ -f "$ENV_FILE" ] && . "$ENV_FILE"; set +a
+
+      # Find container ID of the compose service
+      cid="$(cd "'"$COMPOSE_DIR"'" && docker compose ps -q cloudflared || true)"
+      echo "[detached] container: ${cid:-<none>}"
+
+      # Wait up to 60s for cloudflared to be alive and connected
+      for i in $(seq 1 60); do
+        # metrics reachable means process is up
+        if curl -fsS "http://127.0.0.1:${METRICS_PORT:-49383}/metrics" >/dev/null 2>&1; then
+          # logs line usually shows once tunnel is connected
+          if [ -n "$cid" ] && docker logs "$cid" 2>&1 | grep -E -q "Connected to|Connection established|Registered tunnel"; then
+            echo "[detached] tunnel looks UP ✅"
+            exit 0
+          fi
+        fi
+        sleep 1
+      done
+      echo "[detached] timeout waiting for tunnel ❌"
+      exit 1
+    } >>"$LOG" 2>&1
+  ' >/dev/null 2>&1 &
+
+  echo "⏱️  Restart scheduled in ${delay}s. After reconnect:"
+  echo "    tail -n +1 /tmp/cf-restart.log"
+}
+
+restart-now() {
+  # immediate bounce (SSH will drop)
+  echo "♻️  Restarting now (SSH will drop)..."
+  ./run.sh stop
+  sleep 2
+  ./run.sh start
+}
+
 # ---- main ---------------------------------------------------------------
 cmd="${1:-help}"; shift || true
 
@@ -320,6 +376,8 @@ case "$cmd" in
   tunnel-delete) ensure_env; "${CFLARE[@]}" tunnel delete "${TUNNEL_NAME}" ;;
   tunnel-id)     get_tunnel_id || { echo "❌ No tunnel ID found."; exit 1; } ;;
   tunnel-creds-path) tunnel_creds_path ;;
+  delayed-restart) delayed-restart "${1:-5}" ;;
+  restart-now)     restart-now ;;
 
   # Drive TCP tunnel
   drive-tunnel-start) ensure_env; drive_tunnel_start ;;
