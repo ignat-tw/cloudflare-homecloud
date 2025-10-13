@@ -20,5 +20,10 @@ ingress:
   - hostname: ssh.demonsmp.win
     service: ssh://192.168.2.88:22
 
+  - hostname: maven.demonsmp.win
+    service: http://192.168.2.10:8081
+    originRequest:
+      httpHostHeader: maven.demonsmp.win
+
   # catch-all must remain LAST
   - service: http_status:404

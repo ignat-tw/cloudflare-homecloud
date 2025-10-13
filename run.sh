@@ -303,6 +303,20 @@ cloud_bind_host() {
 cloud_tunnel_stop()   { [[ -f "$TUN_DIR/cloud.pid" ]] && kill "$(cat "$TUN_DIR/cloud.pid")" 2>/dev/null && rm -f "$TUN_DIR/cloud.pid" && echo "✅ Cloud tunnel stopped." || echo "⚠️ No cloud PID."; }
 cloud_tunnel_status() { [[ -f "$TUN_DIR/cloud.pid" ]] && ps -p "$(cat "$TUN_DIR/cloud.pid")" >/dev/null && echo "📈 Cloud tunnel running (PID: $(cat "$TUN_DIR/cloud.pid"))." || echo "❌ Cloud tunnel not running."; }
 
+handover-start() {
+  ensure_layout; ensure_env; preflight
+  docker run -d --name cloudflared_tmp --restart unless-stopped \
+    -v "$CF_CONFIG_FILE":/etc/cloudflared/config.yml:ro \
+    -v "$CF_SECRETS_DIR":/etc/cloudflared:ro \
+    cloudflare/cloudflared:latest \
+    tunnel --config /etc/cloudflared/config.yml run --loglevel ${CF_LOGLEVEL:-info}
+  echo "✅ Temporary connector up (cloudflared_tmp). Open a NEW SSH session now."
+}
+
+handover-finish() {
+  docker rm -f cloudflared_tmp >/dev/null 2>&1 && echo "🧹 Removed cloudflared_tmp" || echo "ℹ️ No temp connector found."
+}
+
 # ---- main ---------------------------------------------------------------
 cmd="${1:-help}"; shift || true
 
