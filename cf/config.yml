@@ -26,5 +26,10 @@ ingress:
   - hostname: ssh.demonsmp.win
     service: ssh://192.168.2.88:22
 
+  - hostname: splitpro.demonsmp.win
+    service: http://192.168.2.10:3000
+    originRequest:
+      httpHostHeader: splitpro.demonsmp.win
+
   # catch-all must remain LAST
   - service: http_status:404
