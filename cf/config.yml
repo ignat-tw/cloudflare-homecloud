@@ -31,5 +31,12 @@ ingress:
     originRequest:
       httpHostHeader: splitpro.demonsmp.win
 
+  # Runway static site on m1 mac (Docker Nginx -> 8088)
+  - hostname: runway.demonsmp.win
+    service: http://192.168.2.10:8088
+    originRequest:
+      # Ensure Host header matches Nginx vhost `server_name`
+      httpHostHeader: runway.demonsmp.win
+
   # catch-all must remain LAST
   - service: http_status:404
