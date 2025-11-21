@@ -7,7 +7,7 @@ metrics: 127.0.0.1:49383
 ingress:
   # ManicTime (existing)
   - hostname: manictime.demonsmp.win
-    service: http://192.168.2.88:38383
+    service: http://192.168.2.10:38383
     originRequest:
       httpHostHeader: manictime.demonsmp.win
 
