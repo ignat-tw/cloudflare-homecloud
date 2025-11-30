@@ -38,5 +38,12 @@ ingress:
       # Ensure Host header matches Nginx vhost `server_name`
       httpHostHeader: runway.demonsmp.win
 
+  # Runway static site on m1 mac (Docker Nginx -> 8088)
+  - hostname: adwent.demonsmp.win
+    service: http://192.168.2.88:8088
+    originRequest:
+      # Ensure Host header matches Nginx vhost `server_name`
+      httpHostHeader: adwent.demonsmp.win
+
   # catch-all must remain LAST
   - service: http_status:404
