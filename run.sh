@@ -25,6 +25,9 @@ DRIVE_LOG_FILE="$TUN_DIR/drive.log"
 CLOUD_PID_FILE="$TUN_DIR/cloud.pid"
 CLOUD_LOG_FILE="$TUN_DIR/cloud.log"
 
+PLEX_PID_FILE="$TUN_DIR/plex.pid"
+PLEX_LOG_FILE="$TUN_DIR/plex.log"
+
 # Defaults for first .env creation
 DEFAULT_TUNNEL_NAME="homecloud"
 DEFAULT_HOSTNAME="cloud.demonsmp.win"
@@ -48,6 +51,13 @@ DEFAULT_CLOUD_LOCAL_PORT="5001"
 DEFAULT_CLOUD_REMOTE_PORT="15001"
 DEFAULT_CLOUD_PUBLIC_PORT="5001"
 DEFAULT_CLOUD_REMOTE_BIND_ALL="false"
+
+# Defaults for Plex raw TCP (via Oracle)
+DEFAULT_PLEX_LOCAL_IP="$DEFAULT_NAS_IP"
+DEFAULT_PLEX_LOCAL_PORT="32400"      # Plex on NAS
+DEFAULT_PLEX_REMOTE_PORT="13240"     # port on Oracle reached via SSH -R
+DEFAULT_PLEX_PUBLIC_PORT="32400"     # public port on Oracle (nginx stream listens here)
+DEFAULT_PLEX_REMOTE_BIND_ALL="false" # set true to bind 0.0.0.0:PLEX_PUBLIC_PORT directly
 
 # Prefer "docker compose", fall back to docker-compose
 dc() {
@@ -96,6 +106,12 @@ Synology Cloud Drive TCP tunnel (autossh → Oracle):
   cloud-tunnel-stop      ❌ Stop it via PID
   cloud-tunnel-status    📈 Check status
   cloud-tunnel-recreate  🔁 Restart cleanly
+
+Plex TCP tunnel (autossh → Oracle):
+  plex-tunnel-start     🔌 Start reverse SSH tunnel & record PID
+  plex-tunnel-stop      ❌ Stop it via PID
+  plex-tunnel-status    📈 Check status
+  plex-tunnel-recreate  🔁 Restart cleanly
 
 EOF
 }
@@ -211,6 +227,14 @@ drive_bind_host() {
   esac
 }
 
+plex_bind_host() {
+  local all="${PLEX_REMOTE_BIND_ALL:-false}"
+  case "$all" in
+    true|TRUE|1|yes|on) echo "0.0.0.0" ;;
+    *)                   echo "127.0.0.1" ;;
+  esac
+}
+
 drive_tunnel_start() {
   need_autossh
   local bind_host; bind_host="$(drive_bind_host)"
@@ -303,6 +327,63 @@ cloud_bind_host() {
 cloud_tunnel_stop()   { [[ -f "$TUN_DIR/cloud.pid" ]] && kill "$(cat "$TUN_DIR/cloud.pid")" 2>/dev/null && rm -f "$TUN_DIR/cloud.pid" && echo "✅ Cloud tunnel stopped." || echo "⚠️ No cloud PID."; }
 cloud_tunnel_status() { [[ -f "$TUN_DIR/cloud.pid" ]] && ps -p "$(cat "$TUN_DIR/cloud.pid")" >/dev/null && echo "📈 Cloud tunnel running (PID: $(cat "$TUN_DIR/cloud.pid"))." || echo "❌ Cloud tunnel not running."; }
 
+plex_tunnel_start() {
+  need_autossh
+  local bind_host; bind_host="$(plex_bind_host)"
+  local R_PLEX="${bind_host}:${PLEX_REMOTE_PORT:-13240}:${PLEX_LOCAL_IP:-$NAS_IP}:${PLEX_LOCAL_PORT:-32400}"
+
+  if [[ -f "$PLEX_PID_FILE" ]] && ps -p "$(cat "$PLEX_PID_FILE")" >/dev/null 2>&1; then
+    echo "⚠️  Plex tunnel already running (PID: $(cat "$PLEX_PID_FILE"))."
+    return
+  fi
+
+  echo "🔌 Starting reverse SSH (Plex 32400) to ${JUMP_HOST} ..."
+  nohup autossh -f -M 0 -N \
+    -i "$SSH_KEY_PATH" \
+    -o StrictHostKeyChecking=no \
+    -o ExitOnForwardFailure=yes \
+    -o IdentitiesOnly=yes \
+    -o ServerAliveInterval=30 \
+    -o ServerAliveCountMax=3 \
+    -R "$R_PLEX" \
+    "$JUMP_HOST" > "$PLEX_LOG_FILE" 2>&1 &
+
+  sleep 1
+  local REAL_PID
+  REAL_PID="$(pgrep -f "autossh.*${R_PLEX//./\\.}.*$JUMP_HOST" | head -n1 || true)"
+  if [[ -n "${REAL_PID:-}" ]]; then
+    echo "$REAL_PID" > "$PLEX_PID_FILE"
+    echo "🚀 Plex tunnel started (PID: $REAL_PID)"
+  else
+    echo "❌ Could not find Plex tunnel PID. See $PLEX_LOG_FILE"
+    exit 1
+  fi
+}
+
+plex_tunnel_stop() {
+  if [[ -f "$PLEX_PID_FILE" ]]; then
+    local PID; PID="$(cat "$PLEX_PID_FILE")"
+    echo "🧹 Stopping Plex tunnel (PID: $PID) ..."
+    if kill "$PID" >/dev/null 2>&1; then
+      rm -f "$PLEX_PID_FILE"
+      echo "✅ Stopped."
+    else
+      echo "⚠️ Not running. Cleaning up PID file."
+      rm -f "$PLEX_PID_FILE"
+    fi
+  else
+    echo "⚠️ No Plex tunnel PID recorded."
+  fi
+}
+
+plex_tunnel_status() {
+  if [[ -f "$PLEX_PID_FILE" ]] && ps -p "$(cat "$PLEX_PID_FILE")" >/dev/null 2>&1; then
+    echo "📈 Plex tunnel is running (PID: $(cat "$PLEX_PID_FILE"))."
+  else
+    echo "❌ Plex tunnel is not running."
+  fi
+}
+
 delayed-restart() {
   local delay="${1:-5}"
   # run detached, capture logs for post-check
@@ -390,6 +471,11 @@ case "$cmd" in
   cloud-tunnel-stop)    ensure_env; cloud_tunnel_stop ;;
   cloud-tunnel-status)  ensure_env; cloud_tunnel_status ;;
   cloud-tunnel-recreate) ensure_env; cloud_tunnel_stop || true; sleep 1; cloud_tunnel_start ;;
+
+  plex-tunnel-start)    ensure_env; plex_tunnel_start ;;
+  plex-tunnel-stop)     ensure_env; plex_tunnel_stop ;;
+  plex-tunnel-status)   ensure_env; plex_tunnel_status ;;
+  plex-tunnel-recreate) ensure_env; plex_tunnel_stop || true; sleep 1; plex_tunnel_start ;;
 
   help|*) show_help ;;
 esac
