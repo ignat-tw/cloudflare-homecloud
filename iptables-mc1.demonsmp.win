@@ -1,0 +1,138 @@
+*mangle
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+COMMIT
+
+*nat
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+:ts-postrouting - [0:0]
+
+# DNAT: Oracle public -> Synology TS
+# Synology Drive
+-A PREROUTING -p tcp -m tcp --dport 6690 -j DNAT --to-destination 100.101.105.75:6690
+# Plex
+-A PREROUTING -p tcp -m tcp --dport 32400 -j DNAT --to-destination 100.101.105.75:32400
+# DSM HTTPS via standard 443 -> Synology 5001
+-A PREROUTING -p tcp -m tcp --dport 443 -j DNAT --to-destination 100.101.105.75:5001
+
+# MASQUERADE to make replies go back via Oracle
+-A POSTROUTING -j ts-postrouting
+-A POSTROUTING -d 100.101.105.75/32 -j MASQUERADE
+
+# Tailscale postrouting (from your backup)
+-A ts-postrouting -m mark --mark 0x40000/0xff0000 -j MASQUERADE
+
+COMMIT
+
+*filter
+# Tighten defaults: drop inbound/forward by default, allow outbound
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+:InstanceServices - [0:0]
+:ts-forward - [0:0]
+:ts-input - [0:0]
+
+##########
+# INPUT
+##########
+
+# Tailscale input hook (from backup)
+-A INPUT -j ts-input
+
+# Allow established / related traffic
+-A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+# Allow loopback
+-A INPUT -i lo -j ACCEPT
+
+# Allow ICMP (ping etc.)
+-A INPUT -p icmp -j ACCEPT
+
+# SSH
+-A INPUT -p tcp -m tcp --dport 22 -m conntrack --ctstate NEW -j ACCEPT
+
+# HTTP / HTTPS on Oracle box (nginx / whatever)
+-A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+-A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+
+# Synology Drive TCP 6690 (forwarded via NAT)
+-A INPUT -p tcp -m tcp --dport 6690 -j ACCEPT
+
+# Minecraft server on Oracle (docker binds 0.0.0.0:25565)
+-A INPUT -p tcp -m tcp --dport 25565 -j ACCEPT
+
+# Plex direct TCP 32400 on Oracle (if used directly as well as via Synology)
+-A INPUT -p tcp -m tcp --dport 32400 -j ACCEPT
+
+# Minecraft / game UDP port
+-A INPUT -p udp -m udp --dport 24454 -j ACCEPT
+
+# Anything else to INPUT: dropped by chain policy (DROP)
+
+##########
+# FORWARD
+##########
+
+# Tailscale forward hook (from backup)
+-A FORWARD -j ts-forward
+
+# Allow established / related forwards
+-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+# Forward traffic to Synology TS IP only on ports we care about
+# Synology Drive
+-A FORWARD -d 100.101.105.75/32 -p tcp -m tcp --dport 6690 -j ACCEPT
+# DSM HTTPS (5001, target of 443 DNAT)
+-A FORWARD -d 100.101.105.75/32 -p tcp -m tcp --dport 5001 -j ACCEPT
+# Plex
+-A FORWARD -d 100.101.105.75/32 -p tcp -m tcp --dport 32400 -j ACCEPT
+
+# Anything else to FORWARD: dropped by chain policy (DROP)
+
+##########
+# OUTPUT
+##########
+
+# Oracle InstanceServices hook for metadata etc. (from backup)
+-A OUTPUT -d 169.254.0.0/16 -j InstanceServices
+
+##########
+# InstanceServices, ts-forward, ts-input chains
+# (copied verbatim from your working backup)
+##########
+
+-A InstanceServices -d 169.254.0.2/32 -p tcp -m owner --uid-owner 0 -m tcp --dport 3260 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.2.0/24 -p tcp -m owner --uid-owner 0 -m tcp --dport 3260 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.4.0/24 -p tcp -m owner --uid-owner 0 -m tcp --dport 3260 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.5.0/24 -p tcp -m owner --uid-owner 0 -m tcp --dport 3260 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.0.2/32 -p tcp -m tcp --dport 80 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.169.254/32 -p udp -m udp --dport 53 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.169.254/32 -p tcp -m tcp --dport 53 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.0.3/32 -p tcp -m owner --uid-owner 0 -m tcp --dport 80 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.0.4/32 -p tcp -m tcp --dport 80 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.169.254/32 -p tcp -m tcp --dport 80 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.169.254/32 -p udp -m udp --dport 67 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.169.254/32 -p udp -m udp --dport 69 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.169.254/32 -p udp -m udp --dport 123 -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j ACCEPT
+-A InstanceServices -d 169.254.0.0/16 -p tcp -m tcp -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j REJECT --reject-with tcp-reset
+-A InstanceServices -d 169.254.0.0/16 -p udp -m udp -m comment --comment "See the Oracle-Provided Images section in the Oracle Cloud Infrastructure documentation for security impact of modifying or removing this rule" -j REJECT --reject-with icmp-port-unreachable
+
+-A ts-forward -i tailscale0 -j MARK --set-xmark 0x40000/0xff0000
+-A ts-forward -m mark --mark 0x40000/0xff0000 -j ACCEPT
+-A ts-forward -s 100.64.0.0/10 -o tailscale0 -j DROP
+-A ts-forward -o tailscale0 -j ACCEPT
+
+-A ts-input -s 100.68.47.124/32 -i lo -j ACCEPT
+-A ts-input -s 100.115.92.0/23 ! -i tailscale0 -j RETURN
+-A ts-input -s 100.64.0.0/10 ! -i tailscale0 -j DROP
+-A ts-input -i tailscale0 -j ACCEPT
+-A ts-input -p udp -m udp --dport 41641 -j ACCEPT
+
+COMMIT
