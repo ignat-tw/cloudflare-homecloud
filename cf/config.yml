@@ -12,10 +12,10 @@ ingress:
       httpHostHeader: manictime.demonsmp.win
 
   # Jira on the M1 mini (Docker maps 18081->8080)
-  - hostname: exception-management-m1.demonsmp.win
+  - hostname: exception-management-m2-studio.demonsmp.win
     service: http://192.168.2.88:18081
     originRequest:
-      httpHostHeader: exception-management-m1.demonsmp.win
+      httpHostHeader: exception-management-m2-studio.demonsmp.win
 
   # Maven on Synology DS720 host (Docker maps 18081->8080)
   - hostname: maven.demonsmp.win
