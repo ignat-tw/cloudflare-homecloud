@@ -10,7 +10,5 @@ services:
     volumes:
       - ../cf/config.yml:/cloudflared/config.yml:ro
       - ../secrets:/etc/cloudflared:ro
-    ports:
-      - "127.0.0.1:${METRICS_PORT}:${METRICS_PORT}"
     cpus: "0.5"                 # hard CPU cap = 1 core
     mem_limit: "200m"             # hard memory limit
