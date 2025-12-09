@@ -45,5 +45,42 @@ ingress:
       # Ensure Host header matches Nginx vhost `server_name`
       httpHostHeader: adwent.demonsmp.win
 
+  # ---------- Jira 10 test envs ----------
+  # Jira 10 + PostgreSQL
+  - hostname: jira10-pg.demonsmp.win
+    service: http://192.168.2.88:18081
+    originRequest:
+      httpHostHeader: jira10-pg.demonsmp.win
+
+  # Jira 10 + MySQL
+  - hostname: jira10-mysql.demonsmp.win
+    service: http://192.168.2.88:18082
+    originRequest:
+      httpHostHeader: jira10-mysql.demonsmp.win
+
+  # Jira 10 + SQL Server (Developer)
+  - hostname: jira10-mssql.demonsmp.win
+    service: http://192.168.2.88:18083
+    originRequest:
+      httpHostHeader: jira10-mssql.demonsmp.win
+
+  # Jira 10 + Oracle XE
+  - hostname: jira10-oracle.demonsmp.win
+    service: http://192.168.2.88:18084
+    originRequest:
+      httpHostHeader: jira10-oracle.demonsmp.win
+
+  # Jira 10 + SQL Server Express
+  - hostname: jira10-mssql-express.demonsmp.win
+    service: http://192.168.2.88:18085
+    originRequest:
+      httpHostHeader: jira10-mssql-express.demonsmp.win
+
+  # Jira 10 + H2
+  - hostname: jira10-h2.demonsmp.win
+    service: http://192.168.2.88:18086
+    originRequest:
+      httpHostHeader: jira10-h2.demonsmp.win
+
   # catch-all must remain LAST
   - service: http_status:404
