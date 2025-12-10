@@ -11,9 +11,9 @@ ingress:
     originRequest:
       httpHostHeader: manictime.demonsmp.win
 
-  # Jira on the M1 mini (Docker maps 18081->8080)
+  # Jira on the M2 studio (Docker maps 18091->8080)
   - hostname: exception-management-m2-studio.demonsmp.win
-    service: http://192.168.2.88:18081
+    service: http://192.168.2.88:18091
     originRequest:
       httpHostHeader: exception-management-m2-studio.demonsmp.win
 
@@ -64,17 +64,17 @@ ingress:
     originRequest:
       httpHostHeader: jira10-mssql.demonsmp.win
 
-  # Jira 10 + Oracle XE
-  - hostname: jira10-oracle.demonsmp.win
-    service: http://192.168.2.88:18084
-    originRequest:
-      httpHostHeader: jira10-oracle.demonsmp.win
-
   # Jira 10 + SQL Server Express
   - hostname: jira10-mssql-express.demonsmp.win
-    service: http://192.168.2.88:18085
+    service: http://192.168.2.88:18084
     originRequest:
       httpHostHeader: jira10-mssql-express.demonsmp.win
+
+  # Jira 10 + Oracle XE
+  - hostname: jira10-oracle.demonsmp.win
+    service: http://192.168.2.88:18085
+    originRequest:
+      httpHostHeader: jira10-oracle.demonsmp.win
 
   # Jira 10 + H2
   - hostname: jira10-h2.demonsmp.win
