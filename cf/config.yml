@@ -83,11 +83,17 @@ ingress:
       httpHostHeader: jira10-h2.demonsmp.win
 
   # ---------- Confluence 10 test envs ----------
-  # Confluence 10 + H2
+  # Confluence 10 + Mysql
   - hostname: confluence10-mysql.demonsmp.win
     service: http://192.168.2.88:19082
     originRequest:
       httpHostHeader: confluence10-mysql.demonsmp.win
+
+  # Confluence 10 + Postgres
+  - hostname: confluence10-pg.demonsmp.win
+    service: http://192.168.2.88:19081
+    originRequest:
+      httpHostHeader: confluence10-pg.demonsmp.win
 
   # catch-all must remain LAST
   - service: http_status:404
