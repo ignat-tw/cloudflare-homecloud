@@ -82,6 +82,12 @@ ingress:
     originRequest:
       httpHostHeader: jira10-h2.demonsmp.win
 
+  # Jira 10 + PostgreSQL PERFORMANCE profile
+  - hostname: jira10-pg-perf.demonsmp.win
+    service: http://192.168.2.88:18091
+    originRequest:
+      httpHostHeader: jira10-pg-perf.demonsmp.win
+
   # ---------- Confluence 10 test envs ----------
   # Confluence 10 + Mysql
   - hostname: confluence10-mysql.demonsmp.win
