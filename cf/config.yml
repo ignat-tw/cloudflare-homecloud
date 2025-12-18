@@ -107,5 +107,11 @@ ingress:
     originRequest:
       httpHostHeader: confluence9-mysql-perf.demonsmp.win
 
+  # Confluence 10 + Mysql PERFORMANCE profile
+  - hostname: confluence10-mysql-perf.demonsmp.win
+    service: http://192.168.2.88:19102
+    originRequest:
+      httpHostHeader: confluence10-mysql-perf.demonsmp.win
+
   # catch-all must remain LAST
   - service: http_status:404
