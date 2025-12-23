@@ -31,19 +31,26 @@ ingress:
     originRequest:
       httpHostHeader: splitpro.demonsmp.win
 
-  # Runway static site on m1 mac (Docker Nginx -> 8088)
+  # Runway static site on m2 studio (Docker Nginx -> 8088)
   - hostname: runway.demonsmp.win
     service: http://192.168.2.88:8088
     originRequest:
       # Ensure Host header matches Nginx vhost `server_name`
       httpHostHeader: runway.demonsmp.win
 
-  # Runway static site on m1 mac (Docker Nginx -> 8088)
+  # Runway static site on m2 studio (Docker Nginx -> 8088)
   - hostname: adwent.demonsmp.win
     service: http://192.168.2.88:8088
     originRequest:
       # Ensure Host header matches Nginx vhost `server_name`
-      httpHostHeader: adwent.demonsmp.win
+      httpHostHeader: adwent.demonsmp.win  
+  
+  # Runway static site on m2 studio (Docker Nginx -> 8088)
+  - hostname: cleanz.demonsmp.win
+    service: http://192.168.2.88:8088
+    originRequest:
+      # Ensure Host header matches Nginx vhost `server_name`
+      httpHostHeader: cleanz.demonsmp.win
 
   # ---------- Jira 10 test envs ----------
   # Jira 10 + PostgreSQL
